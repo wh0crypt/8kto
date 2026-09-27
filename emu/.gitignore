@@ -1,0 +1,38 @@
+# Build
+/build/
+/builddir/
+bin/
+lib/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+Makefile
+
+# Binaries
+*.exe
+*.out
+*.o
+*.obj
+*.a
+*.so
+*.dll
+
+# Logs
+*.log
+
+# IDE / Editor files
+.vscode/
+.idea/
+.cache/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tests / Coverage
+*.gcda
+*.gcno
+coverage/
