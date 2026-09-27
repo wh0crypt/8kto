@@ -108,3 +108,24 @@ In `stm`:
 | `nop` | `add r0, r0` | — | No operation |
 | `clr Rd` | `xor Rd, Rd` | `Rd <= 0` | Clears register to zero |
 | `mov Rs, Rd` | `xor Rd, Rd`<br>`add Rs, Rd` | `Rd <= Rs` | Copies value from `Rs` into `Rd` |
+
+---
+
+## Assembly Syntax Conventions
+
+When targeting the reference assembler (`customasm`), register identifiers are prefixed with `$` to distinguish architectural registers from user symbols and labels:
+
+| ISA Register | Assembly Syntax | Aliases |
+| :---: | :---: | :---: |
+| `r0` | `$r0` | `$0` |
+| `r1` | `$r1` | — |
+| `r2` | `$r2` | — |
+| `r3` | `$r3` | `$pc` |
+
+Example:
+
+```asm
+    clr $r1
+    inc $r1,$r1
+    mov $r1,$r2
+```
