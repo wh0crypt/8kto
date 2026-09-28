@@ -8,6 +8,16 @@
 - **Sequential** execution model
 - **Unconditional**, **conditional**, and **relative** branching
 
+## Data Representation & Signed Arithmetic
+
+All general-purpose registers (R0-R3) and RAM memory addresses hold 8-bit values represented in **two's complement** format.
+
+- **Word Size:** 8 bits (1 byte).
+- **Representable Range:** `-128` (`0x80`) to `+127` (`0x7F`).
+- **Zero Representation:** `0x00` represents strictly positive/neutral zero (`R0` is permanently wired to `0x00`).
+- **Overflow / Wrap-around:** Arithmetic operations (`ADD`, `SUB`, `INC`, `DEC`) follow standard modular arithmetic ($2^8$). Carry and overflow flags are not architecturally exposed; operations wrap around without trapping.
+- **Immediate / Relative Offsets:** 4-bit offset fields used in relative control-flow instructions are sign-extended to 8 bits, yielding an effective branch range of `[-8, +7]` instructions.
+
 ## Registers
 
 - `r0` -> Constant **0** (Hardwired zero, write-ignored)
