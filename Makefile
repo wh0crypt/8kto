@@ -25,7 +25,7 @@ test: emu
 	@echo "==> Assembling tests/isa_test.asm..."
 	@customasm -f readmemb,width:8 -o $(BUILD_DIR)/isa_test.txt $(ISA_RULES) tests/isa_test.asm
 	@echo "==> Running test in 8kto_emu..."
-	@$(EMU_BIN) $(BUILD_DIR)/isa_test.txt
+	@$(EMU_BIN) -f $(BUILD_DIR)/isa_test.txt
 
 # artifacts cleanup
 clean:
