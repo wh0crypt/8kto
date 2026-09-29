@@ -34,11 +34,28 @@ std::expected<ProgramOptions, std::string> parse_arguments(std::span<char *> arg
             return options;
         }
 
+        if (arg == "--debug" || arg == "-d")
+        {
+            options.debug_mode = true;
+            continue;
+        }
+
         if (arg == "--file" || arg == "-f")
         {
             if (++it == args.end() || *it == nullptr)
             {
                 return std::unexpected("flag '--file' requires a file path");
+            }
+
+            const std::string_view val = *it;
+            if (val.starts_with('-'))
+            {
+                return std::unexpected(
+                    std::format(
+                        "flag '--file' requires a valid file path, but got option '{}'",
+                        val
+                    )
+                );
             }
 
             const std::filesystem::path path = *it;
@@ -79,7 +96,7 @@ std::expected<ProgramOptions, std::string> parse_arguments(std::span<char *> arg
 void show_usage()
 {
     std::println(
-        "Usage: 8kto_emu [-h|--help] -f <path>\n"
+        "Usage: 8kto_emu [-h] [-d] -f <path>\n"
         "Try '8kto_emu --help' for more information."
     );
 }
@@ -88,13 +105,15 @@ void show_help()
 {
     std::println(
         "8kto_emu -- a basic emulator for the custom 8kto architecture.\n\n"
-        "Usage: 8kto_emu [-h|--help] -f <path>\n\n"
+        "Usage: 8kto_emu [-d] -f <path>\n"
+        "       8kto_emu -h | --help\n\n"
         "OPTIONS:\n"
-        "    -f, --file <path>\tText file with binary program to execute.\n"
-        "    -h, --help\t\tPrint this message.\n\n"
+        "    -d, --debug        Show debugging information.\n"
+        "    -f, --file <path>  Text file with binary program to execute.\n"
+        "    -h, --help         Print this message.\n\n"
         "EXAMPLES:\n"
         "    8kto_emu --help\n"
-        "    8kto_emu -f test.txt"
+        "    8kto_emu -d -f test.txt"
     );
 }
 
@@ -115,7 +134,7 @@ std::expected<void, std::string> handle(const ProgramOptions &opts) noexcept
             return std::unexpected(rom_res.error());
         }
 
-        if (auto run_res = cpu.run(); !run_res)
+        if (auto run_res = cpu.run(opts.debug_mode); !run_res)
         {
             return std::unexpected(run_res.error());
         }

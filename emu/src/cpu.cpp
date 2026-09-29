@@ -2,6 +2,7 @@
 
 #include <expected>
 #include <format>
+#include <print>
 
 namespace isa
 {
@@ -61,11 +62,11 @@ void Cpu::write_reg(Register reg, std::byte b) noexcept
     this->regs_[reg_idx] = b;
 }
 
-std::expected<void, std::string> Cpu::run()
+std::expected<void, std::string> Cpu::run(bool debug)
 {
-    while (!this->halted_)
+    while (!this->halted_ && this->pc() < this->rom_.size())
     {
-        if (auto res = this->step(); !res)
+        if (auto res = this->step(debug); !res)
         {
             return std::unexpected(res.error());
         }
@@ -74,7 +75,7 @@ std::expected<void, std::string> Cpu::run()
     return {};
 }
 
-std::expected<void, std::string> Cpu::step()
+std::expected<void, std::string> Cpu::step(bool debug)
 {
     // fetch
     const auto current_pc = this->pc();
@@ -210,9 +211,63 @@ std::expected<void, std::string> Cpu::step()
         }
     }
 
+    if (debug)
+    {
+        this->debug_inst(inst);
+    }
+
     this->write_pc(next_pc);
 
     return {};
+}
+
+void Cpu::debug_inst(const Instruction &inst) const noexcept
+{
+    std::print(
+        "[DEBUG] $pc=0x{:02X} $r1={:02X} $r2={:02X} off=0x{:01X} inst: ",
+        this->pc(),
+        std::to_integer<std::uint8_t>(this->read_reg(Register::R1)),
+        std::to_integer<std::uint8_t>(this->read_reg(Register::R2)),
+        inst.off
+    );
+
+    switch (inst.opcode)
+    {
+        case OpCode::ADD:
+        case OpCode::SUB:
+        case OpCode::AND:
+        case OpCode::ORR:
+        case OpCode::XOR:
+        case OpCode::NOT:
+        case OpCode::INC:
+        case OpCode::DEC:
+        case OpCode::JEZ:
+        case OpCode::JNZ:
+            std::println(
+                "{} {}, {}",
+                to_string(inst.opcode),
+                to_string(inst.rs),
+                to_string(inst.rd)
+            );
+            return;
+        case OpCode::LDM:
+            std::println("LDM [{}], {}", to_string(inst.rs), to_string(inst.rd));
+            return;
+        case OpCode::STM:
+            std::println("STM {}, [{}]", to_string(inst.rs), to_string(inst.rd));
+            return;
+        case OpCode::JMP:
+            std::println("JMP {}", to_string(inst.rd));
+            return;
+        case OpCode::JRE:
+            std::println("JRE {}", inst.off);
+            return;
+        case OpCode::HLT:
+            std::println("HLT");
+            return;
+        default:
+            std::println("<UNK>");
+    }
 }
 
 }; // namespace isa

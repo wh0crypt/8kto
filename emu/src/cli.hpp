@@ -10,6 +10,7 @@ namespace cli
 struct ProgramOptions
 {
     bool show_help = false;
+    bool debug_mode = false;
     std::filesystem::path prog_path = "";
 };
 

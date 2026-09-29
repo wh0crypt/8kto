@@ -83,8 +83,8 @@ class Cpu
 
     void write_reg(Register reg, std::byte b) noexcept;
 
-    [[nodiscard]] std::expected<void, std::string> run();
-    [[nodiscard]] std::expected<void, std::string> step();
+    [[nodiscard]] std::expected<void, std::string> run(bool debug = false);
+    [[nodiscard]] std::expected<void, std::string> step(bool debug = false);
 
     void reset()
     {
@@ -99,6 +99,7 @@ class Cpu
     std::array<std::byte, MAX_MEM_SIZE> rom_;
     std::array<std::byte, MAX_MEM_SIZE> ram_;
 
+    void debug_inst(const Instruction &inst) const noexcept;
     void write_pc(std::uint8_t pc)
     {
         this->regs_[static_cast<std::size_t>(Register::R3)] = static_cast<std::byte>(pc);
@@ -134,6 +135,62 @@ class Cpu
 {
     const auto shifted = static_cast<std::int8_t>(val_4bit << 4);
     return static_cast<std::int8_t>(shifted >> 4);
+}
+
+[[nodiscard]] constexpr std::string_view to_string(OpCode op) noexcept
+{
+    switch (op)
+    {
+        case OpCode::ADD:
+            return "ADD";
+        case OpCode::SUB:
+            return "SUB";
+        case OpCode::AND:
+            return "AND";
+        case OpCode::ORR:
+            return "ORR";
+        case OpCode::XOR:
+            return "XOR";
+        case OpCode::NOT:
+            return "NOT";
+        case OpCode::INC:
+            return "INC";
+        case OpCode::DEC:
+            return "DEC";
+        case OpCode::LDM:
+            return "LDM";
+        case OpCode::STM:
+            return "STM";
+        case OpCode::JMP:
+            return "JMP";
+        case OpCode::JEZ:
+            return "JEZ";
+        case OpCode::JNZ:
+            return "JNZ";
+        case OpCode::JRE:
+            return "JRE";
+        case OpCode::HLT:
+            return "HLT";
+        default:
+            return "<unknown>";
+    }
+}
+
+[[nodiscard]] constexpr std::string_view to_string(Register reg) noexcept
+{
+    switch (reg)
+    {
+        case Register::R0:
+            return "$r0";
+        case Register::R1:
+            return "$r1";
+        case Register::R2:
+            return "$r2";
+        case Register::R3:
+            return "$r3";
+        default:
+            return "<unknown>";
+    }
 }
 
 }; // namespace isa
