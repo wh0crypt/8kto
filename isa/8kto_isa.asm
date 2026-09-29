@@ -51,7 +51,7 @@
         reladdr = addr - $
         assert(reladdr <= 7)
         assert(reladdr >= -8)
-        0b1101 @ (reladdr`s4)
+        0b1101 @ (reladdr`4)
     }
     hlt                      => 0b1111 @ 0b0000    ; Halt processor execution
 
