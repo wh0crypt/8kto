@@ -10,69 +10,74 @@
 
 ## Data Representation & Signed Arithmetic
 
-All general-purpose registers (R0-R3) and RAM memory addresses hold 8-bit values represented in **two's complement** format.
+All general-purpose registers (`$r0`-`$r3`) and RAM memory addresses hold 8-bit values represented in **two's complement** format.
 
 - **Word Size:** 8 bits (1 byte).
 - **Representable Range:** `-128` (`0x80`) to `+127` (`0x7F`).
 - **Zero Representation:** `0x00` represents strictly positive/neutral zero (`R0` is permanently wired to `0x00`).
-- **Overflow / Wrap-around:** Arithmetic operations (`ADD`, `SUB`, `INC`, `DEC`) follow standard modular arithmetic ($2^8$). Carry and overflow flags are not architecturally exposed; operations wrap around without trapping.
-- **Immediate / Relative Offsets:** 4-bit offset fields used in relative control-flow instructions are sign-extended to 8 bits, yielding an effective branch range of `[-8, +7]` instructions.
+- **Overflow / Wrap-around:** Arithmetic operations (`add`, `sub`) follow standard modular arithmetic ($2^8$). Carry and overflow flags are not architecturally exposed; operations wrap around without trapping.
+- **Immediate / Relative Offsets:**
+  - 2-bit signed immediate (`imm2`) used in `adi` is sign-extended to 8 bits (`[-2, +1]`).
+  - 4-bit signed immediate (`off`) used in `jre` is sign-extended to 8 bits, yielding a relative jump range of `[-8, +7]` instructions.
 
 ## Registers
 
-- `r0` -> Constant **0** (Hardwired zero, write-ignored)
-- `r1` -> General-purpose register
-- `r2` -> General-purpose register
-- `r3` / `pc` -> Program Counter (holds address of the next instruction, **only modifiable with jump instructions**)
+- `r0` -> Hardwired constant **0** (write-ignored).
+- `r1` -> General-purpose register.
+- `r2` -> General-purpose register.
+- `r3` -> General-purpose / Dedicated Accumulator for immediate loading (`lui`/`lli`) and target address staging.
+
+The Program Counter (`pc`) is an internal hardware register modified sequentially or via control instructions (`jmp`, `jez`, `jnz`, `jre`).
 
 ## Instruction Encoding Formats
 
-> Unused register fields marked with `X` are ignored by the hardware decoder. The assembler defaults to emitting `00`.
+All instructions are exactly 8 bits wide, beginning with a 4-bit opcode (`[7:4]`):
 
-All instructions are 8 bits wide, starting with a 4-bit opcode:
+### Standard Register ALU & Memory Operations
 
-### Arithmetic-Logic
+| Opcode [7:4] | Rs [3:2] | Rd [1:0] | Instructions |
+| :---: | :---: | :---: | :---: |
+| 0000-0101 | Rs | Rd | `add`, `sub`, `and`, `orr`, `xor`, `not` |
+| 1001-1010 | Rs | Rd | `ldm`, `stm` |
+| 1100-1101 | Rs | Rd | `jez`, `jnz` |
 
-| Opcode [7:4] | Rs [3:2] | Rd [1:0] |
+- In `ldm`: `Rs` contains the memory address; `Rd` is the destination register.
+- In `stm`: `Rs` contains the data; `Rd` contains the destination memory address.
+- In `jez` / `jnz`: `Rs` is the condition register; `Rd` contains the jump target address.
+
+### Add Immediate (`adi`)
+
+| Opcode [7:4] | Imm [3:2] | Rd [1:0] |
 | :---: | :---: | :---: |
-| 0XXX | `Rs` | `Rd` |
+| 0110 | 2-bit signed immediate (`s2`) | Rd |
 
-### Memory Operations
+- Operates in-place: `Rd <= Rd + sign_extend(Imm)`.
 
-| Opcode [7:4] | Rs [3:2] | Rd [1:0] |
+### Immediate Nibble Loads (`lui`, `lli`)
+
+| Opcode [7:4] | Imm [3:0] |
+| :---: | :---: |
+| 0111 (`lui`) - 1000 (`lli`) | 4-bit unsigned immediate (`u4`) |
+
+- The destination register is implicitly `$r3`.
+
+### Indirect Jump (`jmp`)
+
+| Opcode [7:4] | Padding [3:2] | Rd [1:0] |
 | :---: | :---: | :---: |
-| 100X | `Rs` | `Rd` |
+| 1011 | 00 | Rd |
 
-In `ldm`:
-
-- `Rs` contains the memory address from where to load the data
-- `Rd` is the register where the data will be stored
-
-In `stm`:
-
-- `Rs` is the register containing the data that will be stored in memory
-- `Rd` contains the memory address where the data will be stored
-
-### Control Operations (Indirect / Conditional)
-
-| Opcode [7:4] | Rs / Padding [3:2] | Rd [1:0] |
-| :---: | :---: | :---: |
-| 1010 - 1100 | `Rs` / Padding | `Rd` |
-
-- Jump target address is stored in `Rd`
-- For unconditional jumps (`jmp`), `Rs` is ignored / padding
-
-### Relative Jump Operation (`jre`)
+### Relative Jump (`jre`)
 
 | Opcode [7:4] | Offset [3:0] |
 | :---: | :---: |
-| 1101 | 4-bit signed immediate (-8 to +7) |
+| 1110 | 4-bit signed relative offset |
 
-### Halt Operation (`hlt`)
+### Halt (`hlt`)
 
 | Opcode [7:4] | Padding [3:0] |
 | :---: | :---: |
-| 1111 | XXXX (ignored) |
+| 1111 | 0000 |
 
 ---
 
@@ -88,54 +93,62 @@ In `stm`:
 | `0011` | ALU | `orr` | `Rs, Rd` | `Rd <= Rd \| Rs` | Bitwise OR |
 | `0100` | ALU | `xor` | `Rs, Rd` | `Rd <= Rd ^ Rs` | Bitwise XOR |
 | `0101` | ALU | `not` | `Rs, Rd` | `Rd <= ~Rs` | Bitwise NOT |
-| `0110` | ALU | `inc` | `Rs, Rd` | `Rd <= Rs + 1` | Increment source into destination |
-| `0111` | ALU | `dec` | `Rs, Rd` | `Rd <= Rs - 1` | Decrement source into destination |
+| `0110` | ALU | `adi` | `Imm, Rd` | `Rs <= Imm + Rd` | Add an immediate into destination |
+| `0111` | ALU | `lui` | `Imm` | `R3 <= Imm << 4` | Load upper nibble into `$r3`, clearing lower nibble |
+| `1000` | ALU | `lli` | `Imm` | `R3 <= (R3 & 0xF0) \| Imm` | Load lower nibble into `$r3`, preserving upper nibble |
 
 ### Memory Instructions
 
 | Opcode | Type | Mnemonic | Operands | Operation | Description |
 | :---: | :---: | :--- | :--- | :--- | :--- |
-| `1000` | Mem | `ldm` | `[Rs], Rd` | `Rd <= MEM[Rs]` | Load from data memory |
-| `1001` | Mem | `stm` | `Rs, [Rd]` | `MEM[Rd] <= Rs` | Store to data memory |
+| `1001` | Mem | `ldm` | `[Rs], Rd` | `Rd <= MEM[Rs]` | Load from data memory |
+| `1010` | Mem | `stm` | `Rs, [Rd]` | `MEM[Rd] <= Rs` | Store to data memory |
 
 ### Control Instructions
 
 | Opcode | Type | Mnemonic | Operands | Operation | Description |
 | :---: | :---: | :--- | :--- | :--- | :--- |
-| `1010` | Jump | `jmp` | `Rd` | `PC <= Rd` | Indirect unconditional jump |
-| `1011` | Jump | `jez` | `Rs, Rd` | `if (Rs == 0) PC <= Rd` | Jump if source equals zero |
-| `1100` | Jump | `jnz` | `Rs, Rd` | `if (Rs != 0) PC <= Rd` | Jump if source is not zero |
-| `1101` | Jump | `jre` | `Offset(4b)` | `PC <= PC_current + sign_extend(Offset)` | Signed relative branch |
-| `1110` | Free | *res* | — | — | Reserved |
+| `1011` | Jump | `jmp` | `Rd` | `PC <= Rd` | Indirect unconditional jump |
+| `1100` | Jump | `jez` | `Rs, Rd` | `if (Rs == 0) PC <= Rd` | Jump if source equals zero |
+| `1101` | Jump | `jnz` | `Rs, Rd` | `if (Rs != 0) PC <= Rd` | Jump if source is not zero |
+| `1110` | Jump | `jre` | `Offset(4b)` | `PC <= PC_current + sign_extend(Offset)` | Signed relative branch |
 | `1111` | Ctrl | `hlt` | — | Halt | Halts CPU execution |
 
 ---
 
 ## Pseudo-instructions & Idioms
 
-| Mnemonic | Equivalent Instruction(s) | Effect | Description |
+| Mnemonic | Expansions | ROM Bytes | Description |
 | :--- | :--- | :--- | :--- |
-| `nop` | `add r0, r0` | — | No operation |
-| `clr Rd` | `xor Rd, Rd` | `Rd <= 0` | Clears register to zero |
-| `mov Rs, Rd` | `xor Rd, Rd`<br>`add Rs, Rd` | `Rd <= Rs` | Copies value from `Rs` into `Rd` |
-
+| `nop` | `add r0, r0` | 1 | No operation |
+| `clr Rd` | `xor Rd, Rd` | 1 | Clears register to zero |
+| `mov Rs, Rd` | `xor Rd, Rd`<br>`add Rs, Rd` | 2 | Copy `Rs` into `Rd` |
+| `inc Rd` | `adi 1, Rd` | 1 | Increment `Rd` by 1 |
+| `dec Rd` | `adi -11, Rd` | 1 | Decrement `Rd` by 1 |
+| `ldi $r3, Imm8` | `lui (Imm8 >> 4)`<br>`lli (Imm8 & 0x0F)` | 2 | Synthesize arbitrary 8-bit immediate into `$r3` |
+| `jla Target` | `ldi $r3, Target`<br>`jmp $r3` | 3 | Jump to absolute 8-bit label |
 ---
 
 ## Assembly Syntax Conventions
 
-When targeting the reference assembler (`customasm`), register identifiers are prefixed with `$` to distinguish architectural registers from user symbols and labels:
+Register identifiers are prefixed with `$`:
 
-| ISA Register | Assembly Syntax | Aliases |
+| ISA Register | Assembly Syntax | Architectural Role |
 | :---: | :---: | :---: |
-| `r0` | `$r0` | `$0` |
-| `r1` | `$r1` | — |
-| `r2` | `$r2` | — |
-| `r3` | `$r3` | `$pc` |
+| `r0` | `$r0` | Constant zero |
+| `r1` | `$r1` | General purpose |
+| `r2` | `$r2` | General purpose |
+| `r3` | `$r3` | General purpose / Accumulator for `lui`, `lli`, `ldi`, `jla` |
 
 Example:
 
 ```asm
-    clr $r1
-    inc $r1,$r1
-    mov $r1,$r2
+start:
+    clr $r1              ; $r1 <= 0
+    inc $r1              ; $r1 <= 1 (via adi 1, $r1)
+    mov $r1, $r2         ; $r2 <= 1
+    jla target           ; Fixed 3-byte expansion (lui + lli + jmp $r3)
+
+target:
+    hlt
 ```
