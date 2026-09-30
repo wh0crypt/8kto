@@ -32,18 +32,19 @@ enum class OpCode : std::uint8_t
     ORR = 0b0011,
     XOR = 0b0100,
     NOT = 0b0101,
-    INC = 0b0110,
-    DEC = 0b0111,
+    ADI = 0b0110,
+    LUI = 0b0111,
+    LLI = 0b1000,
 
     // memory instructions
-    LDM = 0b1000,
-    STM = 0b1001,
+    LDM = 0b1001,
+    STM = 0b1010,
 
     // control instructions
-    JMP = 0b1010,
-    JEZ = 0b1011,
-    JNZ = 0b1100,
-    JRE = 0b1101,
+    JMP = 0b1011,
+    JEZ = 0b1100,
+    JNZ = 0b1101,
+    JRE = 0b1110,
     HLT = 0b1111
 };
 
@@ -52,6 +53,8 @@ struct Instruction
     OpCode opcode = OpCode::HLT;
     Register rs = Register::R0;
     Register rd = Register::R0;
+    std::uint8_t imm2 = 0b00;
+    std::uint8_t imm4 = 0b0000;
     std::uint8_t off = 0b0000;
 
     [[nodiscard]] static std::expected<Instruction, std::string> decode(std::byte raw) noexcept;
@@ -60,7 +63,7 @@ struct Instruction
 class Cpu
 {
   public:
-    Cpu() : halted_(false), regs_(), rom_(), ram_()
+    Cpu() : halted_(false), pc_(), regs_(), rom_(), ram_()
     {
     }
 
@@ -68,7 +71,7 @@ class Cpu
 
     [[nodiscard]] std::uint8_t pc() const noexcept
     {
-        return std::to_integer<std::uint8_t>(this->read_reg(Register::R3));
+        return this->pc_;
     }
 
     [[nodiscard]] std::byte read_reg(Register reg) const noexcept
@@ -95,6 +98,7 @@ class Cpu
 
   private:
     bool halted_;
+    std::uint8_t pc_;
     std::array<std::byte, REG_NUM> regs_;
     std::array<std::byte, MAX_MEM_SIZE> rom_;
     std::array<std::byte, MAX_MEM_SIZE> ram_;
@@ -102,7 +106,7 @@ class Cpu
     void debug_inst(const Instruction &inst) const noexcept;
     void write_pc(std::uint8_t pc)
     {
-        this->regs_[static_cast<std::size_t>(Register::R3)] = static_cast<std::byte>(pc);
+        this->pc_ = pc;
     }
 };
 
@@ -116,8 +120,9 @@ class Cpu
         case OpCode::ORR:
         case OpCode::XOR:
         case OpCode::NOT:
-        case OpCode::INC:
-        case OpCode::DEC:
+        case OpCode::ADI:
+        case OpCode::LUI:
+        case OpCode::LLI:
         case OpCode::LDM:
         case OpCode::STM:
         case OpCode::JMP:
@@ -131,10 +136,13 @@ class Cpu
     }
 }
 
-[[nodiscard]] constexpr std::int8_t sign_extend_4bit(std::uint8_t val_4bit) noexcept
+template <std::size_t Bits>
+[[nodiscard]] constexpr std::int8_t sign_extend(std::uint8_t value) noexcept
 {
-    const auto shifted = static_cast<std::int8_t>(val_4bit << 4);
-    return static_cast<std::int8_t>(shifted >> 4);
+    static_assert(Bits > 0 && Bits <= 8, "bits must be between 1 and 8");
+    constexpr std::size_t shift = 8 - Bits;
+    const auto shifted = static_cast<std::int8_t>(value << shift);
+    return static_cast<std::int8_t>(shifted >> shift);
 }
 
 [[nodiscard]] constexpr std::string_view to_string(OpCode op) noexcept
@@ -153,10 +161,12 @@ class Cpu
             return "XOR";
         case OpCode::NOT:
             return "NOT";
-        case OpCode::INC:
-            return "INC";
-        case OpCode::DEC:
-            return "DEC";
+        case OpCode::ADI:
+            return "ADI";
+        case OpCode::LUI:
+            return "LUI";
+        case OpCode::LLI:
+            return "LLI";
         case OpCode::LDM:
             return "LDM";
         case OpCode::STM:

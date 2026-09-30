@@ -18,10 +18,12 @@ std::expected<Instruction, std::string> Instruction::decode(std::byte raw) noexc
     }
 
     return Instruction{
-        .opcode = static_cast<OpCode>((val >> 4) & 0x0F),
-        .rs = static_cast<Register>((val >> 2) & 0x03),
-        .rd = static_cast<Register>(val & 0x03),
-        .off = static_cast<std::uint8_t>(val & 0x0F)
+        .opcode = static_cast<OpCode>((val >> 4) & 0x0F),     // bits [7:4]
+        .rs = static_cast<Register>((val >> 2) & 0x03),       // bits [3:2]
+        .rd = static_cast<Register>(val & 0x03),              // bits [1:0]
+        .imm2 = static_cast<std::uint8_t>((val >> 2) & 0x03), // bits [3:2]
+        .imm4 = static_cast<std::uint8_t>(val & 0x0F),        // bits [3:0]
+        .off = static_cast<std::uint8_t>(val & 0x0F)          // bits [3:0]
     };
 }
 
@@ -46,14 +48,14 @@ std::expected<void, std::string> Cpu::load_rom(const Program &p) noexcept
     std::copy(p.bytes().begin(), p.bytes().end(), this->rom_.begin() + p.start_addr());
 
     this->reset();
-    this->write_pc(p.start_addr());
+    this->pc_ = p.start_addr();
 
     return {};
 }
 
 void Cpu::write_reg(Register reg, std::byte b) noexcept
 {
-    if (reg == Register::R0 || reg == Register::R3)
+    if (reg == Register::R0)
     {
         return;
     }
@@ -64,7 +66,7 @@ void Cpu::write_reg(Register reg, std::byte b) noexcept
 
 std::expected<void, std::string> Cpu::run(bool debug)
 {
-    while (!this->halted_ && this->pc() < this->rom_.size())
+    while (!this->halted_ && this->pc_ < this->rom_.size())
     {
         if (auto res = this->step(debug); !res)
         {
@@ -78,7 +80,7 @@ std::expected<void, std::string> Cpu::run(bool debug)
 std::expected<void, std::string> Cpu::step(bool debug)
 {
     // fetch
-    const auto current_pc = this->pc();
+    const auto current_pc = this->pc_;
     std::byte rom_inst = this->rom_[current_pc];
     auto next_pc = static_cast<std::uint8_t>(current_pc + 1);
 
@@ -140,17 +142,26 @@ std::expected<void, std::string> Cpu::step(bool debug)
             break;
         }
 
-        case OpCode::INC:
+        case OpCode::ADI:
         {
-            result = static_cast<std::uint8_t>(rs_val + 1);
+            const auto delta = sign_extend<2>(inst.imm2);
+            result = static_cast<std::uint8_t>(rd_val + delta);
             this->write_reg(inst.rd, static_cast<std::byte>(result));
             break;
         }
 
-        case OpCode::DEC:
+        case OpCode::LUI:
         {
-            result = static_cast<std::uint8_t>(rs_val - 1);
-            this->write_reg(inst.rd, static_cast<std::byte>(result));
+            result = static_cast<std::uint8_t>(inst.imm4 << 4);
+            this->write_reg(Register::R3, static_cast<std::byte>(result));
+            break;
+        }
+
+        case OpCode::LLI:
+        {
+            const auto r3_val = static_cast<std::uint8_t>(this->read_reg(Register::R3));
+            result = static_cast<std::uint8_t>((r3_val & 0xF0) | (inst.imm4 & 0x0F));
+            this->write_reg(Register::R3, static_cast<std::byte>(result));
             break;
         }
 
@@ -192,7 +203,7 @@ std::expected<void, std::string> Cpu::step(bool debug)
 
         case OpCode::JRE:
         {
-            next_pc = static_cast<std::uint8_t>(current_pc + sign_extend_4bit(inst.off));
+            next_pc = static_cast<std::uint8_t>(current_pc + sign_extend<4>(inst.off));
             break;
         }
 
@@ -216,7 +227,7 @@ std::expected<void, std::string> Cpu::step(bool debug)
         this->debug_inst(inst);
     }
 
-    this->write_pc(next_pc);
+    this->pc_ = next_pc;
 
     return {};
 }
@@ -224,10 +235,11 @@ std::expected<void, std::string> Cpu::step(bool debug)
 void Cpu::debug_inst(const Instruction &inst) const noexcept
 {
     std::print(
-        "[DEBUG] $pc=0x{:02X} $r1={:02X} $r2={:02X} off=0x{:01X} inst: ",
-        this->pc(),
+        "[DEBUG] $pc=0x{:02X} $r1={:02X} $r2={:02X} $r3={:02X} off=0x{:01X} inst: ",
+        this->pc_,
         std::to_integer<std::uint8_t>(this->read_reg(Register::R1)),
         std::to_integer<std::uint8_t>(this->read_reg(Register::R2)),
+        std::to_integer<std::uint8_t>(this->read_reg(Register::R3)),
         inst.off
     );
 
@@ -239,8 +251,6 @@ void Cpu::debug_inst(const Instruction &inst) const noexcept
         case OpCode::ORR:
         case OpCode::XOR:
         case OpCode::NOT:
-        case OpCode::INC:
-        case OpCode::DEC:
         case OpCode::JEZ:
         case OpCode::JNZ:
             std::println(
@@ -249,6 +259,15 @@ void Cpu::debug_inst(const Instruction &inst) const noexcept
                 to_string(inst.rs),
                 to_string(inst.rd)
             );
+            return;
+        case OpCode::ADI:
+            std::println("ADI {}, {}", sign_extend<2>(inst.imm2), to_string(inst.rd));
+            return;
+        case OpCode::LUI:
+            std::println("LUI 0x{:01X}", inst.imm4);
+            return;
+        case OpCode::LLI:
+            std::println("LLI 0x{:01X}", inst.imm4);
             return;
         case OpCode::LDM:
             std::println("LDM [{}], {}", to_string(inst.rs), to_string(inst.rd));
@@ -260,7 +279,7 @@ void Cpu::debug_inst(const Instruction &inst) const noexcept
             std::println("JMP {}", to_string(inst.rd));
             return;
         case OpCode::JRE:
-            std::println("JRE {}", inst.off);
+            std::println("JRE {}", sign_extend<4>(inst.off));
             return;
         case OpCode::HLT:
             std::println("HLT");
